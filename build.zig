@@ -101,6 +101,22 @@ pub fn build(b: *std.Build) void {
     lib.installConfigHeader(generated_unarr_h);
     b.installArtifact(lib);
 
+    const zig_api = b.addModule("unarr", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+    zig_api.addConfigHeader(generated_unarr_h);
+    zig_api.linkLibrary(lib);
+
+    const tests = b.addTest(.{
+        .root_module = zig_api,
+    });
+    const run_tests = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Run Zig API tests");
+    test_step.dependOn(&run_tests.step);
+
     const check = b.step("check", "Compile libunarr without installing");
     check.dependOn(&lib.step);
 }
