@@ -52,6 +52,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const shared = b.option(bool, "shared", "Build libunarr as a shared library") orelse false;
     const enable_7z = b.option(bool, "enable_7z", "Enable 7z format support") orelse true;
+    const static_libc = b.option(bool, "static_libc", "Link against static ziglibc instead of system libc") orelse true;
 
     const unarr_upstream = b.dependency("unarr_upstream", .{});
 
@@ -98,8 +99,53 @@ pub fn build(b: *std.Build) void {
         });
     }
 
+    if (static_libc) {
+        const ziglibc_dep = b.lazyDependency("ziglibc", .{
+            .target = target,
+            .optimize = optimize,
+            .trace = false,
+        }) orelse return;
+
+        lib.root_module.linkLibrary(findDependencyArtifactByLinkage(ziglibc_dep, "cguana", .static));
+    }
+
     lib.installConfigHeader(generated_unarr_h);
     b.installArtifact(lib);
+
+    var lib_for_tests = lib;
+    if (static_libc) {
+        const test_lib = b.addLibrary(.{
+            .name = "unarr_test",
+            .linkage = .static,
+            .version = unarr_version,
+            .root_module = b.createModule(.{
+                .target = target,
+                .optimize = optimize,
+                .link_libc = true,
+            }),
+        });
+        test_lib.root_module.addIncludePath(unarr_upstream.path(""));
+        test_lib.root_module.addConfigHeader(generated_unarr_h);
+        test_lib.root_module.addCMacro("_FILE_OFFSET_BITS", "64");
+        test_lib.root_module.addCMacro("UNARR_EXPORT_SYMBOLS", "1");
+        test_lib.root_module.addCSourceFiles(.{
+            .root = unarr_upstream.path(""),
+            .files = &base_sources,
+            .flags = &.{"-std=c99"},
+        });
+
+        if (enable_7z) {
+            test_lib.root_module.addCMacro("HAVE_7Z", "1");
+            test_lib.root_module.addCMacro("Z7_PPMD_SUPPORT", "1");
+            test_lib.root_module.addCSourceFiles(.{
+                .root = unarr_upstream.path(""),
+                .files = &seven_zip_sources,
+                .flags = &.{"-std=c99"},
+            });
+        }
+
+        lib_for_tests = test_lib;
+    }
 
     const zig_api = b.addModule("unarr", .{
         .root_source_file = b.path("src/root.zig"),
@@ -108,7 +154,7 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
     zig_api.addConfigHeader(generated_unarr_h);
-    zig_api.linkLibrary(lib);
+    zig_api.linkLibrary(lib_for_tests);
 
     const tests = b.addTest(.{
         .root_module = zig_api,
@@ -119,4 +165,31 @@ pub fn build(b: *std.Build) void {
 
     const check = b.step("check", "Compile libunarr without installing");
     check.dependOn(&lib.step);
+}
+
+fn findDependencyArtifactByLinkage(
+    dep: *std.Build.Dependency,
+    name: []const u8,
+    linkage: std.builtin.LinkMode,
+) *std.Build.Step.Compile {
+    var found: ?*std.Build.Step.Compile = null;
+    for (dep.builder.install_tls.step.dependencies.items) |dep_step| {
+        const install_artifact = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
+        if (!std.mem.eql(u8, install_artifact.artifact.name, name)) continue;
+        if (install_artifact.artifact.linkage != linkage) continue;
+
+        if (found != null) {
+            std.debug.panic(
+                "artifact '{s}' with linkage '{s}' is ambiguous in dependency",
+                .{ name, @tagName(linkage) },
+            );
+        }
+        found = install_artifact.artifact;
+    }
+
+    if (found) |artifact| return artifact;
+    std.debug.panic(
+        "unable to find artifact '{s}' with linkage '{s}' in dependency install graph",
+        .{ name, @tagName(linkage) },
+    );
 }

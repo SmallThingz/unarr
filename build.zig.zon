@@ -36,6 +36,11 @@
             .url = "https://github.com/selmf/unarr/archive/00799b5d6a7456eff37276ad376d1715ee222e02.tar.gz",
             .hash = "N-V-__8AABWMCgDgDrwfEHLcf0rwMuWfSTEMZsTxuSs3oRJs",
         },
+        .ziglibc = .{
+            .url = "https://github.com/SmallThingz/ziglibc/archive/92bc9c5958dee6914bf23df2866f949a9f20217f.tar.gz",
+            .hash = "N-V-__8AAPAzBABOh0xPzpuOJ9SfMs4dAcweMC4noD5Cgr9m",
+            .lazy = true,
+        },
     },
     .paths = .{
         "build.zig",
