@@ -92,6 +92,12 @@ Current test coverage includes:
 - TAR multi-entry iteration and lookup behavior
 - `openFile` and `openStream` ownership semantics
 
+## 📚 Documentation
+
+- [DOCUMENTATION.md](./DOCUMENTATION.md)
+- [SECURITY.md](./SECURITY.md)
+- [CONTRIBUTIONS.md](./CONTRIBUTIONS.md)
+
 ## 🧱 Build Model
 
 This project pins upstream `selmf/unarr` in `build.zig.zon` and compiles the C sources directly from that fetched dependency.
@@ -100,4 +106,4 @@ Generated headers (`unarr.h`) are produced during build from upstream `unarr.h.i
 
 ## 📜 License
 
-`unarr` upstream uses LGPLv3. This Zig wrapper project follows the repository license terms.
+GNU Lesser General Public License v3. See [LICENCE](./LICENCE).
