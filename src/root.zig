@@ -324,6 +324,26 @@ fn buildTarFixture(allocator: std.mem.Allocator, entries: []const TarFixtureEntr
     return out.toOwnedSlice(allocator);
 }
 
+fn expectNamedEntryData(
+    archive: *Archive,
+    allocator: std.mem.Allocator,
+    name: []const u8,
+    expected: []const u8,
+) !void {
+    const name_z = try allocator.dupeZ(u8, name);
+    defer allocator.free(name_z);
+
+    try std.testing.expect(archive.parseEntryFor(name_z));
+    const entry = currentEntry(archive);
+    const got = try entry.readAlloc(allocator, expected.len);
+    defer allocator.free(got);
+    try std.testing.expectEqualStrings(expected, got);
+}
+
+fn readFixtureFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+}
+
 test "runtime version matches generated header values" {
     const v = runtimeVersion();
     try std.testing.expectEqual(@as(u8, 1), v.major);
@@ -505,4 +525,43 @@ test "openStream does not take stream ownership" {
     const data = try entry.readAlloc(allocator, 64);
     defer allocator.free(data);
     try std.testing.expectEqualStrings("stream-data", data);
+}
+
+test "real zip fixture from disk decompresses deflate entries" {
+    const allocator = std.testing.allocator;
+    const real_alpha = try readFixtureFile(allocator, "testdata/src/alpha.txt");
+    defer allocator.free(real_alpha);
+    const real_beta = try readFixtureFile(allocator, "testdata/src/beta.bin");
+    defer allocator.free(real_beta);
+
+    const path_z = try allocator.dupeZ(u8, "testdata/archives/real-deflate.zip");
+    defer allocator.free(path_z);
+
+    var archive = try Archive.openFile(.zip, path_z, .{});
+    defer archive.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), archive.globalCommentSize());
+    try expectNamedEntryData(&archive, allocator, "alpha.txt", real_alpha);
+    try expectNamedEntryData(&archive, allocator, "beta.bin", real_beta);
+
+    const missing = try allocator.dupeZ(u8, "missing.file");
+    defer allocator.free(missing);
+    try std.testing.expect(!archive.parseEntryFor(missing));
+}
+
+test "real 7z fixture from disk decompresses entries" {
+    const allocator = std.testing.allocator;
+    const real_alpha = try readFixtureFile(allocator, "testdata/src/alpha.txt");
+    defer allocator.free(real_alpha);
+    const real_beta = try readFixtureFile(allocator, "testdata/src/beta.bin");
+    defer allocator.free(real_beta);
+
+    const path_z = try allocator.dupeZ(u8, "testdata/archives/real.7z");
+    defer allocator.free(path_z);
+
+    var archive = try Archive.openFile(.@"7z", path_z, .{});
+    defer archive.deinit();
+
+    try expectNamedEntryData(&archive, allocator, "alpha.txt", real_alpha);
+    try expectNamedEntryData(&archive, allocator, "beta.bin", real_beta);
 }

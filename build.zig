@@ -74,6 +74,7 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
             .link_libc = true,
+            .sanitize_c = .off,
         }),
     });
 
@@ -122,6 +123,7 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
                 .link_libc = true,
+                .sanitize_c = .off,
             }),
         });
         test_lib.root_module.addIncludePath(unarr_upstream.path(""));
