@@ -73,7 +73,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
-            .link_libc = true,
+            .link_libc = !static_libc,
             .sanitize_c = .off,
         }),
     });
@@ -100,15 +100,16 @@ pub fn build(b: *std.Build) void {
         });
     }
 
-    if (static_libc) {
+    const static_libc_artifact = if (static_libc) blk: {
         const ziglibc_dep = b.lazyDependency("ziglibc", .{
             .target = target,
             .optimize = optimize,
             .trace = false,
         }) orelse return;
 
-        lib.root_module.linkLibrary(findDependencyArtifactByLinkage(ziglibc_dep, "cguana", .static));
-    }
+        configureStaticLibc(lib.root_module, ziglibc_dep);
+        break :blk ziglibc_dep.artifact("cguana");
+    } else null;
 
     lib.installConfigHeader(generated_unarr_h);
     b.installArtifact(lib);
@@ -122,7 +123,7 @@ pub fn build(b: *std.Build) void {
             .root_module = b.createModule(.{
                 .target = target,
                 .optimize = optimize,
-                .link_libc = true,
+                .link_libc = false,
                 .sanitize_c = .off,
             }),
         });
@@ -146,6 +147,15 @@ pub fn build(b: *std.Build) void {
             });
         }
 
+        if (static_libc_artifact) |_| {
+            const ziglibc_dep = b.lazyDependency("ziglibc", .{
+                .target = target,
+                .optimize = optimize,
+                .trace = false,
+            }) orelse return;
+            configureStaticLibc(test_lib.root_module, ziglibc_dep);
+        }
+
         lib_for_tests = test_lib;
     }
 
@@ -153,9 +163,18 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
+        .link_libc = !static_libc,
     });
     zig_api.addConfigHeader(generated_unarr_h);
+    if (static_libc_artifact) |artifact| {
+        const ziglibc_dep = b.lazyDependency("ziglibc", .{
+            .target = target,
+            .optimize = optimize,
+            .trace = false,
+        }) orelse return;
+        configureStaticLibc(zig_api, ziglibc_dep);
+        zig_api.linkLibrary(artifact);
+    }
     zig_api.linkLibrary(lib_for_tests);
 
     const tests = b.addTest(.{
@@ -169,29 +188,9 @@ pub fn build(b: *std.Build) void {
     check.dependOn(&lib.step);
 }
 
-fn findDependencyArtifactByLinkage(
-    dep: *std.Build.Dependency,
-    name: []const u8,
-    linkage: std.builtin.LinkMode,
-) *std.Build.Step.Compile {
-    var found: ?*std.Build.Step.Compile = null;
-    for (dep.builder.install_tls.step.dependencies.items) |dep_step| {
-        const install_artifact = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
-        if (!std.mem.eql(u8, install_artifact.artifact.name, name)) continue;
-        if (install_artifact.artifact.linkage != linkage) continue;
-
-        if (found != null) {
-            std.debug.panic(
-                "artifact '{s}' with linkage '{s}' is ambiguous in dependency",
-                .{ name, @tagName(linkage) },
-            );
-        }
-        found = install_artifact.artifact;
-    }
-
-    if (found) |artifact| return artifact;
-    std.debug.panic(
-        "unable to find artifact '{s}' with linkage '{s}' in dependency install graph",
-        .{ name, @tagName(linkage) },
-    );
+fn configureStaticLibc(module: *std.Build.Module, dep: *std.Build.Dependency) void {
+    module.addIncludePath(dep.path("inc/libc"));
+    module.addIncludePath(dep.path("inc/posix"));
+    module.addIncludePath(dep.path("inc/gnu"));
+    module.linkLibrary(dep.artifact("cguana"));
 }

@@ -17,7 +17,7 @@ Supported archive formats:
 
 ## Requirements
 
-- Zig `0.15.2+`
+- Zig `0.16.0-dev+`
 - C toolchain supported by your Zig target
 
 ## Build and Test
@@ -32,10 +32,12 @@ Useful build flags:
 ```bash
 zig build -Dshared=true
 zig build -Denable_7z=false
+zig build -Dstatic_libc=false
 ```
 
 - `-Dshared=true`: builds `libunarr` as a shared library
 - `-Denable_7z=false`: excludes 7z source set/defines
+- `-Dstatic_libc=false`: disables the default vendored `ziglibc` static-libc link path
 
 ## Package Integration
 

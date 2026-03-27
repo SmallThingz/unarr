@@ -341,7 +341,7 @@ fn expectNamedEntryData(
 }
 
 fn readFixtureFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+    return std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, allocator, .limited(1024 * 1024));
 }
 
 test "runtime version matches generated header values" {
@@ -428,12 +428,20 @@ test "openFile works with generated zip fixture" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    try tmp.dir.writeFile(.{
+    try tmp.dir.writeFile(std.testing.io, .{
         .sub_path = "sample.zip",
         .data = zip,
     });
 
-    const abs_path = try tmp.dir.realpathAlloc(allocator, "sample.zip");
+    const cwd = try std.process.currentPathAlloc(std.testing.io, allocator);
+    defer allocator.free(cwd);
+    const abs_path = try std.fs.path.join(allocator, &.{
+        cwd,
+        ".zig-cache",
+        "tmp",
+        tmp.sub_path[0..],
+        "sample.zip",
+    });
     defer allocator.free(abs_path);
 
     const abs_path_z = try allocator.dupeZ(u8, abs_path);
@@ -549,6 +557,73 @@ test "real zip fixture from disk decompresses deflate entries" {
     try std.testing.expect(!archive.parseEntryFor(missing));
 }
 
+test "real zip fixture in memory iterates entries and reparses offsets" {
+    const allocator = std.testing.allocator;
+    const archive_bytes = try readFixtureFile(allocator, "testdata/archives/real-deflate.zip");
+    defer allocator.free(archive_bytes);
+    const real_alpha = try readFixtureFile(allocator, "testdata/src/alpha.txt");
+    defer allocator.free(real_alpha);
+    const real_beta = try readFixtureFile(allocator, "testdata/src/beta.bin");
+    defer allocator.free(real_beta);
+
+    var archive = try Archive.openMemory(.zip, archive_bytes, .{});
+    defer archive.deinit();
+
+    const first = (try archive.nextEntry()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("alpha.txt", first.name() orelse return error.TestUnexpectedResult);
+    const first_data = try first.readAlloc(allocator, real_alpha.len);
+    defer allocator.free(first_data);
+    try std.testing.expectEqualStrings(real_alpha, first_data);
+
+    const second = (try archive.nextEntry()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("beta.bin", second.name() orelse return error.TestUnexpectedResult);
+    const second_offset = second.offset();
+    const second_data = try second.readAlloc(allocator, real_beta.len);
+    defer allocator.free(second_data);
+    try std.testing.expectEqualSlices(u8, real_beta, second_data);
+    try std.testing.expect((try archive.nextEntry()) == null);
+
+    try archive.parseEntryAt(second_offset);
+    const reparsed = currentEntry(&archive);
+    const reparsed_data = try reparsed.readAlloc(allocator, real_beta.len);
+    defer allocator.free(reparsed_data);
+    try std.testing.expectEqualSlices(u8, real_beta, reparsed_data);
+}
+
+test "real tar fixture from disk parses entries" {
+    const allocator = std.testing.allocator;
+    const real_alpha = try readFixtureFile(allocator, "testdata/src/alpha.txt");
+    defer allocator.free(real_alpha);
+    const real_beta = try readFixtureFile(allocator, "testdata/src/beta.bin");
+    defer allocator.free(real_beta);
+
+    const path_z = try allocator.dupeZ(u8, "testdata/archives/real.tar");
+    defer allocator.free(path_z);
+
+    var archive = try Archive.openFile(.tar, path_z, .{});
+    defer archive.deinit();
+
+    const first = (try archive.nextEntry()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("alpha.txt", first.name() orelse return error.TestUnexpectedResult);
+    const first_data = try first.readAlloc(allocator, real_alpha.len);
+    defer allocator.free(first_data);
+    try std.testing.expectEqualStrings(real_alpha, first_data);
+
+    const second = (try archive.nextEntry()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("beta.bin", second.name() orelse return error.TestUnexpectedResult);
+    const second_offset = second.offset();
+    const second_data = try second.readAlloc(allocator, real_beta.len);
+    defer allocator.free(second_data);
+    try std.testing.expectEqualSlices(u8, real_beta, second_data);
+    try std.testing.expect((try archive.nextEntry()) == null);
+
+    try archive.parseEntryAt(second_offset);
+    const reparsed = currentEntry(&archive);
+    const reparsed_data = try reparsed.readAlloc(allocator, real_beta.len);
+    defer allocator.free(reparsed_data);
+    try std.testing.expectEqualSlices(u8, real_beta, reparsed_data);
+}
+
 test "real 7z fixture from disk decompresses entries" {
     const allocator = std.testing.allocator;
     const real_alpha = try readFixtureFile(allocator, "testdata/src/alpha.txt");
@@ -564,4 +639,31 @@ test "real 7z fixture from disk decompresses entries" {
 
     try expectNamedEntryData(&archive, allocator, "alpha.txt", real_alpha);
     try expectNamedEntryData(&archive, allocator, "beta.bin", real_beta);
+}
+
+test "real 7z fixture in memory iterates entries" {
+    const allocator = std.testing.allocator;
+    const archive_bytes = try readFixtureFile(allocator, "testdata/archives/real.7z");
+    defer allocator.free(archive_bytes);
+    const real_alpha = try readFixtureFile(allocator, "testdata/src/alpha.txt");
+    defer allocator.free(real_alpha);
+    const real_beta = try readFixtureFile(allocator, "testdata/src/beta.bin");
+    defer allocator.free(real_beta);
+
+    var archive = try Archive.openMemory(.@"7z", archive_bytes, .{});
+    defer archive.deinit();
+
+    const first = (try archive.nextEntry()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("alpha.txt", first.name() orelse return error.TestUnexpectedResult);
+    const first_data = try first.readAlloc(allocator, real_alpha.len);
+    defer allocator.free(first_data);
+    try std.testing.expectEqualStrings(real_alpha, first_data);
+
+    const second = (try archive.nextEntry()) orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqualStrings("beta.bin", second.name() orelse return error.TestUnexpectedResult);
+    const second_data = try second.readAlloc(allocator, real_beta.len);
+    defer allocator.free(second_data);
+    try std.testing.expectEqualSlices(u8, real_beta, second_data);
+    try std.testing.expect((try archive.nextEntry()) == null);
+    try std.testing.expect(archive.atEof());
 }

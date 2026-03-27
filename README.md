@@ -2,7 +2,7 @@
 
 Zig-first bindings and high-level API for [`selmf/unarr`](https://github.com/selmf/unarr), with Zig-managed dependency fetching and C library build.
 
-![Zig](https://img.shields.io/badge/Zig-0.15.2%2B-f7a41d)
+![Zig](https://img.shields.io/badge/Zig-0.16.0--dev%2B-f7a41d)
 ![Formats](https://img.shields.io/badge/Formats-RAR%20%7C%20TAR%20%7C%20ZIP%20%7C%207z-2ea44f)
 ![Build](https://img.shields.io/badge/Build-Zig%20build%20system-0366d6)
 
@@ -26,6 +26,7 @@ Build options:
 ```bash
 zig build -Dshared=true      # build shared libunarr
 zig build -Denable_7z=false  # compile without 7z sources
+zig build -Dstatic_libc=false # use system libc instead of vendored ziglibc
 ```
 
 List all options/steps:
@@ -103,6 +104,8 @@ Current test coverage includes:
 This project pins upstream `selmf/unarr` in `build.zig.zon` and compiles the C sources directly from that fetched dependency.
 
 Generated headers (`unarr.h`) are produced during build from upstream `unarr.h.in` using Zig's `addConfigHeader`.
+
+Static-libc builds use a vendored `ziglibc` snapshot sourced from the local updated `ziglibc` tree and linked by default.
 
 ## 📜 License
 
