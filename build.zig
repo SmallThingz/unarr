@@ -107,8 +107,9 @@ pub fn build(b: *std.Build) void {
             .trace = false,
         }) orelse return;
 
-        configureStaticLibc(lib.root_module, ziglibc_dep);
-        break :blk ziglibc_dep.artifact("cguana");
+        const ziglibc_lib = findDependencyArtifactByLinkage(ziglibc_dep, "cguana", .static);
+        configureStaticLibc(lib.root_module, ziglibc_lib, ziglibc_dep);
+        break :blk ziglibc_lib;
     } else null;
 
     lib.installConfigHeader(generated_unarr_h);
@@ -153,7 +154,7 @@ pub fn build(b: *std.Build) void {
                 .optimize = optimize,
                 .trace = false,
             }) orelse return;
-            configureStaticLibc(test_lib.root_module, ziglibc_dep);
+            configureStaticLibc(test_lib.root_module, findDependencyArtifactByLinkage(ziglibc_dep, "cguana", .static), ziglibc_dep);
         }
 
         lib_for_tests = test_lib;
@@ -172,8 +173,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .trace = false,
         }) orelse return;
-        configureStaticLibc(zig_api, ziglibc_dep);
-        zig_api.linkLibrary(artifact);
+        configureStaticLibc(zig_api, artifact, ziglibc_dep);
     }
     zig_api.linkLibrary(lib_for_tests);
 
@@ -188,9 +188,36 @@ pub fn build(b: *std.Build) void {
     check.dependOn(&lib.step);
 }
 
-fn configureStaticLibc(module: *std.Build.Module, dep: *std.Build.Dependency) void {
+fn configureStaticLibc(module: *std.Build.Module, artifact: *std.Build.Step.Compile, dep: *std.Build.Dependency) void {
     module.addIncludePath(dep.path("inc/libc"));
     module.addIncludePath(dep.path("inc/posix"));
     module.addIncludePath(dep.path("inc/gnu"));
-    module.linkLibrary(dep.artifact("cguana"));
+    module.linkLibrary(artifact);
+}
+
+fn findDependencyArtifactByLinkage(
+    dep: *std.Build.Dependency,
+    name: []const u8,
+    linkage: std.builtin.LinkMode,
+) *std.Build.Step.Compile {
+    var found: ?*std.Build.Step.Compile = null;
+    for (dep.builder.install_tls.step.dependencies.items) |dep_step| {
+        const install_artifact = dep_step.cast(std.Build.Step.InstallArtifact) orelse continue;
+        if (!std.mem.eql(u8, install_artifact.artifact.name, name)) continue;
+        if (install_artifact.artifact.linkage != linkage) continue;
+
+        if (found != null) {
+            std.debug.panic(
+                "artifact '{s}' with linkage '{s}' is ambiguous in dependency",
+                .{ name, @tagName(linkage) },
+            );
+        }
+        found = install_artifact.artifact;
+    }
+
+    if (found) |artifact| return artifact;
+    std.debug.panic(
+        "unable to find artifact '{s}' with linkage '{s}' in dependency install graph",
+        .{ name, @tagName(linkage) },
+    );
 }

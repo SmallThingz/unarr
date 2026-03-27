@@ -37,7 +37,7 @@ zig build -Dstatic_libc=false
 
 - `-Dshared=true`: builds `libunarr` as a shared library
 - `-Denable_7z=false`: excludes 7z source set/defines
-- `-Dstatic_libc=false`: disables the default vendored `ziglibc` static-libc link path
+- `-Dstatic_libc=false`: disables the default `ziglibc` static-libc link path
 
 ## Package Integration
 

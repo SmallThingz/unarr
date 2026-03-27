@@ -26,7 +26,7 @@ Build options:
 ```bash
 zig build -Dshared=true      # build shared libunarr
 zig build -Denable_7z=false  # compile without 7z sources
-zig build -Dstatic_libc=false # use system libc instead of vendored ziglibc
+zig build -Dstatic_libc=false # use system libc instead of ziglibc
 ```
 
 List all options/steps:
@@ -105,7 +105,7 @@ This project pins upstream `selmf/unarr` in `build.zig.zon` and compiles the C s
 
 Generated headers (`unarr.h`) are produced during build from upstream `unarr.h.in` using Zig's `addConfigHeader`.
 
-Static-libc builds use a vendored `ziglibc` snapshot sourced from the local updated `ziglibc` tree and linked by default.
+Static-libc builds use a lazily fetched `ziglibc` dependency pinned in `build.zig.zon` and linked by default.
 
 ## 📜 License
 
